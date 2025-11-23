@@ -270,4 +270,13 @@ if df_rojo.empty:
 else:
     st.dataframe(
         df_rojo[["Data_No", "RUL_pred", "RUL_pct", "Estado"]].sort_values("RUL_pred")
-        .style.format({"RUL_pred": "{:.1f}", "RUL_pct
+        .style.format({"RUL_pred": "{:.1f}", "RUL_pct": "{:.1f}"})
+    )
+
+# Tabla completa
+with st.expander("📄 Ver tabla completa del estado actual de todos los filtros"):
+    st.dataframe(
+        df_current[["Data_No", "RUL_pred", "RUL_pct", "Estado"]]
+        .sort_values("RUL_pct")
+        .style.format({"RUL_pred": "{:.1f}", "RUL_pct": "{:.1f}"})
+    )
