@@ -148,14 +148,52 @@ if uploaded_file:
     best = metrics_df.iloc[0]["Modelo"]
     st.success(f"🏆 Mejor modelo según RMSE: **{best}**")
 
-    st.subheader("🔍 Vida real vs predicha")
-    y_test = preds[best]["y_test"]
-    y_pred = preds[best]["y_pred"]
+    import altair as alt
 
-    corr = np.corrcoef(y_test, y_pred)[0, 1]
-    st.write(f"Correlación: **{corr:.3f}**")
+st.subheader("🔍 Vida real vs vida predicha (scatter)")
 
-    st.scatter_chart(pd.DataFrame({"Real": y_test, "Predicha": y_pred}))
+y_test = preds[best]["y_test"]
+y_pred = preds[best]["y_pred"]
+
+corr = np.corrcoef(y_test, y_pred)[0, 1]
+st.write(f"Correlación: **{corr:.3f}**")
+
+# Crear DataFrame
+scatter_df = pd.DataFrame({
+    "Real": y_test,
+    "Predicha": y_pred
+})
+
+# Scatter real
+points = (
+    alt.Chart(scatter_df)
+    .mark_circle(size=40, opacity=0.25, color="#1f77b4")
+    .encode(
+        x=alt.X("Real:Q", title="Vida real del filtro (RUL)"),
+        y=alt.Y("Predicha:Q", title="Vida predicha por el modelo"),
+        tooltip=["Real", "Predicha"]
+    )
+)
+
+# Línea diagonal (referencia de perfección)
+diagonal = (
+    alt.Chart(scatter_df)
+    .mark_line(color="red", opacity=0.8)
+    .encode(
+        x="Real:Q",
+        y="Real:Q"
+    )
+)
+
+# Combinar ambos
+chart = (points + diagonal).properties(
+    width="container",
+    height=400,
+    title="Relación entre Vida Real y Predicha"
+)
+
+st.altair_chart(chart, use_container_width=True)
+
 
 else:
     st.info("Subí un archivo CSV para comenzar.")
