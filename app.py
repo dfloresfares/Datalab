@@ -138,15 +138,15 @@ def train_and_evaluate_models(X, y, include_xgb=True):
 # ==========================================================
 # 4. LAYOUT PRINCIPAL UX 2.0
 # ==========================================================
-st.title("⚙️ Estimación de Vida Útil Remanente (VUR) en Filtros Industriales")
+st.title("⚙️ Estimación de Vida Útil Remanente (RUL) en Filtros Industriales")
 st.write("""
 Esta aplicación te permite:
 1) Cargar tus datos  
 2) Comparar modelos de Machine Learning  
-3) Ver qué filtros están en **riesgo operativo** (semáforo)  
+3) Ver qué filtros están en **riesgo operativo** (semáforo)
 """)
 
-uploaded_file = st.file_uploader("📂 Subí un archivo CSV (Test_Data_CSV.csv)", type=["csv"])
+uploaded_file = st.file_uploader("📂 Subí un archivo CSV (Entrenamiento_Data_CSV.csv)", type=["csv"])
 if uploaded_file is None:
     st.info("Esperando que subas un archivo para comenzar…")
     st.stop()
@@ -155,7 +155,7 @@ if uploaded_file is None:
 df = pd.read_csv(uploaded_file)
 st.success(f"Archivo cargado correctamente: {df.shape[0]} filas")
 
-st.subheader("👀 Vista rápida del dataset")
+st.subheader("👀 Vista rápida del dataset - A continuación, se muestran las primeras 5 filas de tu base de datos:")
 st.dataframe(df.head())
 
 if "RUL" not in df.columns:
