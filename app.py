@@ -10,6 +10,16 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 # ==========================================================
+# 0. INTENTAR IMPORTAR XGBOOST
+# ==========================================================
+try:
+    from xgboost import XGBRegressor
+    XGB_AVAILABLE = True
+except Exception as e:
+    XGB_AVAILABLE = False
+
+
+# ==========================================================
 # 1. FEATURE ENGINEERING
 # ==========================================================
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -20,36 +30,12 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     elif "Time" in df.columns:
         df = df.sort_values(["Time"])
 
-    df["dp_diff"] = 0.0
-    df["dp_slope"] = 0.0
-    df["dp_rolling_mean"] = 0.0
-    df["dp_rolling_std"] = 0.0
+    df["dp_diff"] = df["Differential_pressure"].diff().fillna(0.0)
+    df["dp_slope"] = df["dp_diff"] / (df["Time"].diff().replace(0, np.nan))
+    df["dp_slope"] = df["dp_slope"].replace([np.inf, -np.inf], 0).fillna(0.0)
 
-    window = 5
-
-    if "Data_No" in df.columns:
-        groups = df.groupby("Data_No")
-    else:
-        groups = [(None, df)]
-
-    for key, g in groups:
-        g = g.sort_values("Time") if "Time" in g.columns else g
-
-        dp_diff = g["Differential_pressure"].diff().fillna(0.0)
-
-        if "Time" in g.columns:
-            time_diff = g["Time"].diff().replace(0, np.nan)
-            dp_slope = (dp_diff / time_diff).replace([np.inf, -np.inf], np.nan).fillna(0.0)
-        else:
-            dp_slope = dp_diff * 0.0
-
-        dp_roll_mean = g["Differential_pressure"].rolling(window=window, min_periods=1).mean()
-        dp_roll_std = g["Differential_pressure"].rolling(window=window, min_periods=2).std().fillna(0.0)
-
-        df.loc[g.index, "dp_diff"] = dp_diff.values
-        df.loc[g.index, "dp_slope"] = dp_slope.values
-        df.loc[g.index, "dp_rolling_mean"] = dp_roll_mean.values
-        df.loc[g.index, "dp_rolling_std"] = dp_roll_std.values
+    df["dp_rolling_mean"] = df["Differential_pressure"].rolling(5, min_periods=1).mean()
+    df["dp_rolling_std"] = df["Differential_pressure"].rolling(5, min_periods=2).std().fillna(0.0)
 
     eps = 1e-3
     df["dp_over_flow"] = df["Differential_pressure"] / (df["Flow_rate"] + eps)
@@ -58,40 +44,32 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ==========================================================
-# 2. PREPARAR FEATURES Y TARGET
+# 2. PREPARAR FEATURES
 # ==========================================================
-def prepare_features(df: pd.DataFrame, target_col: str = "RUL"):
-    df_model = df.copy()
+def prepare_features(df, target_col="RUL"):
+    df = df.copy()
 
-    if "Dust" in df_model.columns:
-        df_model = pd.get_dummies(df_model, columns=["Dust"], drop_first=True)
+    if "Dust" in df.columns:
+        df = pd.get_dummies(df, columns=["Dust"], drop_first=True)
 
-    num_cols = [
-        "Differential_pressure",
-        "Flow_rate",
-        "Time",
-        "Dust_feed",
-        "dp_slope",
-        "dp_rolling_mean",
-        "dp_rolling_std",
-        "dp_over_flow",
+    candidate_cols = [
+        "Differential_pressure", "Flow_rate", "Time", "Dust_feed",
+        "dp_diff", "dp_slope", "dp_rolling_mean", "dp_rolling_std", "dp_over_flow"
     ]
 
-    num_cols = [c for c in num_cols if c in df_model.columns]
-    dust_ohe_cols = [c for c in df_model.columns if c.startswith("Dust_")]
+    final_cols = [c for c in candidate_cols if c in df.columns]
+    final_cols += [c for c in df.columns if c.startswith("Dust_")]
 
-    feature_cols = num_cols + dust_ohe_cols
+    X = df[final_cols].values
+    y = df[target_col].values
 
-    X = df_model[feature_cols].values
-    y = df_model[target_col].values
-
-    return X, y, feature_cols
+    return X, y, final_cols
 
 
 # ==========================================================
-# 3. ENTRENAR Y EVALUAR MODELOS
+# 3. ENTRENAR Y COMPARAR MODELOS
 # ==========================================================
-def train_and_evaluate_models(X, y):
+def train_and_evaluate_models(X, y, include_xgb=True):
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
@@ -102,15 +80,22 @@ def train_and_evaluate_models(X, y):
 
     models = {
         "LinearRegression": LinearRegression(),
-        "RandomForest": RandomForestRegressor(
-            n_estimators=300,
-            random_state=42,
-            n_jobs=-1
-        ),
-        "GradientBoosting": GradientBoostingRegressor(
-            random_state=42
-        ),
+        "RandomForest": RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1),
+        "GradientBoosting": GradientBoostingRegressor(random_state=42),
     }
+
+    # Agregar XGBoost si está disponible
+    if include_xgb and XGB_AVAILABLE:
+        models["XGBoost"] = XGBRegressor(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=5,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="reg:squarederror",
+            n_jobs=-1,
+            random_state=42
+        )
 
     results = []
     predictions = {}
@@ -120,21 +105,11 @@ def train_and_evaluate_models(X, y):
         y_pred = model.predict(X_test_scaled)
 
         mae = mean_absolute_error(y_test, y_pred)
-        mse = mean_squared_error(y_test, y_pred)
-        rmse = mse ** 0.5
+        rmse = (mean_squared_error(y_test, y_pred)) ** 0.5
         r2 = r2_score(y_test, y_pred)
 
-        results.append({
-            "Modelo": name,
-            "MAE": mae,
-            "RMSE": rmse,
-            "R2": r2
-        })
-
-        predictions[name] = {
-            "y_test": y_test,
-            "y_pred": y_pred
-        }
+        results.append({"Modelo": name, "MAE": mae, "RMSE": rmse, "R2": r2})
+        predictions[name] = {"y_test": y_test, "y_pred": y_pred}
 
     metrics_df = pd.DataFrame(results).sort_values(by="RMSE")
     return metrics_df, predictions
@@ -143,49 +118,44 @@ def train_and_evaluate_models(X, y):
 # ==========================================================
 # 4. STREAMLIT APP
 # ==========================================================
-st.set_page_config(page_title="Comparación de modelos de vida útil remanente", page_icon="⚙️")
+st.set_page_config(page_title="Comparación de modelos para Vida Útil Remanente", page_icon="⚙️")
 
-st.title("⚙️ Comparación de modelos para estimar vida útil remanente (VUR)")
-st.write("Subí un dataset con columna `RUL` y evaluá automáticamente distintos modelos supervisados.")
+st.title("⚙️ Estimación de Vida Útil Remanente (VUR) con ML")
+st.write("Subí tu dataset y compará modelos supervisados para predecir degradación.")
 
-uploaded_file = st.file_uploader("📂 Subí tu archivo CSV con datos del filtro", type=["csv"])
+uploaded_file = st.file_uploader("📂 Subí un archivo CSV", type=["csv"])
 
-if uploaded_file is not None:
+if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.success(f"Dataset cargado: {df.shape[0]} filas, {df.shape[1]} columnas")
 
-    st.subheader("Vista previa del dataset")
-    st.dataframe(df.head())
-
     if "RUL" not in df.columns:
-        st.error("El dataset debe contener la columna 'RUL'.")
+        st.error("El dataset necesita la columna 'RUL'.")
         st.stop()
 
-    st.subheader("Generando features derivados…")
+    st.subheader("🔧 Generando features derivados…")
     df_fe = add_derived_features(df)
 
-    X, y, feature_cols = prepare_features(df_fe, target_col="RUL")
+    X, y, cols = prepare_features(df_fe)
+    st.info(f"Total de features utilizados: {len(cols)}")
 
-    st.info(f"Total de features usados: {len(feature_cols)}")
+    st.subheader("🚀 Entrenando y evaluando modelos…")
+    metrics_df, preds = train_and_evaluate_models(X, y, include_xgb=True)
 
-    st.subheader("Entrenando modelos…")
-    metrics_df, predictions = train_and_evaluate_models(X, y)
-
-    st.subheader("📊 Resultados comparativos")
+    st.subheader("📊 Comparación de modelos")
     st.dataframe(metrics_df.style.format({"MAE": "{:.2f}", "RMSE": "{:.2f}", "R2": "{:.3f}"}))
 
-    best_model = metrics_df.iloc[0]["Modelo"]
-    st.success(f"Mejor modelo según RMSE: **{best_model}**")
+    best = metrics_df.iloc[0]["Modelo"]
+    st.success(f"🏆 Mejor modelo según RMSE: **{best}**")
 
-    st.subheader("🔍 Vida útil real vs predicha (scatter)")
-    y_test = predictions[best_model]["y_test"]
-    y_pred = predictions[best_model]["y_pred"]
+    st.subheader("🔍 Vida real vs predicha")
+    y_test = preds[best]["y_test"]
+    y_pred = preds[best]["y_pred"]
 
     corr = np.corrcoef(y_test, y_pred)[0, 1]
     st.write(f"Correlación: **{corr:.3f}**")
 
-    scatter_df = pd.DataFrame({"Vida real": y_test, "Vida predicha": y_pred})
-    st.scatter_chart(scatter_df, x="Vida real", y="Vida predicha")
+    st.scatter_chart(pd.DataFrame({"Real": y_test, "Predicha": y_pred}))
 
 else:
     st.info("Subí un archivo CSV para comenzar.")
