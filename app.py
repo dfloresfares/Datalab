@@ -120,8 +120,8 @@ def train_and_evaluate_models(X, y, include_xgb=True):
 # ==========================================================
 st.set_page_config(page_title="Comparación de modelos para Vida Útil Remanente", page_icon="⚙️")
 
-st.title("⚙️ Estimación de Vida Útil Remanente (VUR) con ML")
-st.write("Subí tu dataset y compará modelos supervisados para predecir degradación.")
+st.title("⚙️ Estimación de Vida Útil Remanente (RUL) con ML")
+st.write("Subí tu dataset y compará modelos supervisados para predecir su vida útil remanente.")
 
 uploaded_file = st.file_uploader("📂 Subí un archivo CSV", type=["csv"])
 
