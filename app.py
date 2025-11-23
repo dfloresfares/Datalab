@@ -223,9 +223,9 @@ if uploaded_file:
         df_current["RUL_pct"] = df_current["RUL_pred"] / max_rul_real * 100
 
         def clasificar_estado(pct):
-            if pct < 10:
+            if pct < 5:
                 return "Rojo"
-            elif pct < 30:
+            elif pct < 20:
                 return "Amarillo"
             else:
                 return "Verde"
