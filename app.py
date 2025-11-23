@@ -84,7 +84,6 @@ def train_and_evaluate_models(X, y, include_xgb=True):
         "GradientBoosting": GradientBoostingRegressor(random_state=42),
     }
 
-    # Agregar XGBoost si está disponible
     if include_xgb and XGB_AVAILABLE:
         models["XGBoost"] = XGBRegressor(
             n_estimators=500,
@@ -99,6 +98,7 @@ def train_and_evaluate_models(X, y, include_xgb=True):
 
     results = []
     predictions = {}
+    fitted_models = {}
 
     for name, model in models.items():
         model.fit(X_train_scaled, y_train)
@@ -110,9 +110,11 @@ def train_and_evaluate_models(X, y, include_xgb=True):
 
         results.append({"Modelo": name, "MAE": mae, "RMSE": rmse, "R2": r2})
         predictions[name] = {"y_test": y_test, "y_pred": y_pred}
+        fitted_models[name] = model
 
     metrics_df = pd.DataFrame(results).sort_values(by="RMSE")
-    return metrics_df, predictions
+    return metrics_df, predictions, fitted_models, scaler
+
 
 
 # ==========================================================
@@ -121,7 +123,7 @@ def train_and_evaluate_models(X, y, include_xgb=True):
 st.set_page_config(page_title="Comparación de modelos para Vida Útil Remanente", page_icon="⚙️")
 
 st.title("⚙️ Estimación de Vida Útil Remanente (RUL) con ML")
-st.write("Subí tu dataset y compará modelos supervisados para predecir su vida útil remanente.")
+st.write("Subí tu base de datos estructurada y compará la performance de distintos modelos supervisados para predecir su vida útil remanente.")
 
 uploaded_file = st.file_uploader("📂 Subí un archivo CSV", type=["csv"])
 
@@ -140,40 +142,37 @@ if uploaded_file:
     st.info(f"Total de features utilizados: {len(cols)}")
 
     st.subheader("🚀 Entrenando y evaluando modelos…")
-    metrics_df, preds = train_and_evaluate_models(X, y, include_xgb=True)
+    metrics_df, preds, models, scaler = train_and_evaluate_models(X, y, include_xgb=True)
 
     st.subheader("📊 Comparación de modelos")
     st.dataframe(metrics_df.style.format({"MAE": "{:.2f}", "RMSE": "{:.2f}", "R2": "{:.3f}"}))
 
-    best = metrics_df.iloc[0]["Modelo"]
-    st.success(f"🏆 Mejor modelo según RMSE: **{best}**")
+        best = metrics_df.iloc[0]["Modelo"]
+        st.success(f"🏆 Mejor modelo según RMSE: **{best}**")
 
-    import altair as alt
-    st.subheader("🔍 Vida real vs vida predicha (scatter)")
-    y_test = preds[best]["y_test"]
-    y_pred = preds[best]["y_pred"]
+        st.subheader("🔍 Vida real vs vida predicha (scatter)")
 
-    corr = np.corrcoef(y_test, y_pred)[0, 1]
-    st.write(f"Correlación: **{corr:.3f}**")
+        y_test = preds[best]["y_test"]
+        y_pred = preds[best]["y_pred"]
 
-    # Crear DataFrame
-    scatter_df = pd.DataFrame({
-        "Real": y_test,
-        "Predicha": y_pred
-    })
+        corr = np.corrcoef(y_test, y_pred)[0, 1]
+        st.write(f"Correlación: **{corr:.3f}**")
 
-    # Scatter real
-    points = (
-        alt.Chart(scatter_df)
-        .mark_circle(size=40, opacity=0.25, color="#1f77b4")
-        .encode(
-            x=alt.X("Real:Q", title="Vida real del filtro (RUL)"),
-            y=alt.Y("Predicha:Q", title="Vida predicha por el modelo"),
-            tooltip=["Real", "Predicha"]
+        scatter_df = pd.DataFrame({
+            "Real": y_test,
+            "Predicha": y_pred
+        })
+
+        points = (
+            alt.Chart(scatter_df)
+            .mark_circle(size=40, opacity=0.25, color="#1f77b4")
+            .encode(
+                x=alt.X("Real:Q", title="Vida real del filtro (RUL)"),
+                y=alt.Y("Predicha:Q", title="Vida predicha por el modelo"),
+                tooltip=["Real", "Predicha"]
+            )
         )
-    )
 
-    # Línea diagonal (referencia de perfección)
     diagonal = (
         alt.Chart(scatter_df)
         .mark_line(color="red", opacity=0.8)
@@ -183,14 +182,87 @@ if uploaded_file:
         )
     )
 
-    # Combinar ambos
     chart = (points + diagonal).properties(
         width="container",
         height=400,
-        title="Relación entre Vida Real y Predicha"
+        title="Relación entre vida real y vida predicha"
     )
 
-    st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, use_container_width=True)
+    st.subheader("🚦 Semáforo de riesgo por filtro")
+
+    # Usamos el mejor modelo entrenado
+    best_model = models[best]
+
+    # Volvemos a escalar TODO el dataset y predecimos RUL para todas las filas
+    X_scaled_full = scaler.transform(X)
+    rul_pred_full = best_model.predict(X_scaled_full)
+
+    # Copiamos el dataframe con features para poder agregar predicciones
+    df_risk = df_fe.copy()
+    df_risk["RUL_pred"] = rul_pred_full
+
+    # Tomamos solo el "estado actual" de cada filtro:
+    # última medición temporal por Data_No
+    if "Data_No" in df_risk.columns and "Time" in df_risk.columns:
+        df_risk_sorted = df_risk.sort_values(["Data_No", "Time"])
+        idx_last = df_risk_sorted.groupby("Data_No")["Time"].idxmax()
+        df_current = df_risk_sorted.loc[idx_last].copy()
+    else:
+        # fallback: última fila por Data_No si no hay Time limpio
+        if "Data_No" in df_risk.columns:
+            df_current = df_risk.sort_values("Data_No").groupby("Data_No").tail(1).copy()
+        else:
+            st.warning("No se encontró la columna 'Data_No'. No se puede armar el semáforo por filtro.")
+            df_current = None
+
+    if df_current is not None:
+
+        max_rul_real = df["RUL"].max()
+        df_current["RUL_pct"] = df_current["RUL_pred"] / max_rul_real * 100
+
+        def clasificar_estado(pct):
+            if pct < 10:
+                return "Rojo"
+            elif pct < 30:
+                return "Amarillo"
+            else:
+                return "Verde"
+
+        df_current["Estado"] = df_current["RUL_pct"].apply(clasificar_estado)
+
+        n_filtros = len(df_current)
+        n_rojo = (df_current["Estado"] == "Rojo").sum()
+        n_amarillo = (df_current["Estado"] == "Amarillo").sum()
+        n_verde = (df_current["Estado"] == "Verde").sum()
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total filtros", n_filtros)
+        col2.metric("🟢 Verdes", n_verde)
+        col3.metric("🟡 Amarillos", n_amarillo)
+        col4.metric("🔴 Rojos", n_rojo)
+
+        st.markdown("#### 🔴 Filtros en estado ROJO (programar limpieza / intervención)")
+
+        df_rojo = df_current[df_current["Estado"] == "Rojo"].copy()
+
+        if df_rojo.empty:
+            st.success("No hay filtros en estado rojo según el umbral configurado (< 10% de vida útil remanente).")
+        else:
+            cols_to_show = ["Data_No", "RUL_pred", "RUL_pct", "Estado"]
+            extras = [c for c in ["Differential_pressure", "Flow_rate", "Time"] if c in df_rojo.columns]
+            cols_to_show += extras
+
+            df_rojo = df_rojo[cols_to_show].sort_values("RUL_pred")
+            st.dataframe(df_rojo.style.format({"RUL_pred": "{:.1f}", "RUL_pct": "{:.1f}"}))
+
+        with st.expander("Ver tabla completa de estado por filtro"):
+            cols_full = ["Data_No", "RUL_pred", "RUL_pct", "Estado"]
+            extras_full = [c for c in ["Differential_pressure", "Flow_rate", "Time"] if c in df_current.columns]
+            cols_full += extras_full
+            st.dataframe(df_current[cols_full].sort_values("RUL_pct"))
+
+
 
     
 else:
