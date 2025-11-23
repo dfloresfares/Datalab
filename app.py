@@ -147,20 +147,20 @@ if uploaded_file:
     st.subheader("📊 Comparación de modelos")
     st.dataframe(metrics_df.style.format({"MAE": "{:.2f}", "RMSE": "{:.2f}", "R2": "{:.3f}"}))
 
-        best = metrics_df.iloc[0]["Modelo"]
-        st.success(f"🏆 Mejor modelo según RMSE: **{best}**")
+    best = metrics_df.iloc[0]["Modelo"]
+    st.success(f"🏆 Mejor modelo según RMSE: **{best}**")
 
-        st.subheader("🔍 Vida real vs vida predicha (scatter)")
+    st.subheader("🔍 Vida real vs vida predicha (scatter)")
 
-        y_test = preds[best]["y_test"]
-        y_pred = preds[best]["y_pred"]
+    y_test = preds[best]["y_test"]
+    y_pred = preds[best]["y_pred"]
 
-        corr = np.corrcoef(y_test, y_pred)[0, 1]
-        st.write(f"Correlación: **{corr:.3f}**")
+    corr = np.corrcoef(y_test, y_pred)[0, 1]
+    st.write(f"Correlación: **{corr:.3f}**")
 
-        scatter_df = pd.DataFrame({
-            "Real": y_test,
-            "Predicha": y_pred
+    scatter_df = pd.DataFrame({
+        "Real": y_test,
+        "Predicha": y_pred
         })
 
         points = (
