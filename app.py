@@ -28,6 +28,17 @@ incluir_xgb = st.sidebar.checkbox("Incluir XGBoost", value=False)
 umbral_rojo = st.sidebar.slider("Umbral ROJO (%)", min_value=1, max_value=20, value=5)
 umbral_amarillo = st.sidebar.slider("Umbral AMARILLO (%)", min_value=umbral_rojo, max_value=50, value=30)
 
+st.sidebar.markdown("---")
+usar_demo = st.sidebar.checkbox("🚀 Usar modo demo (dataset de ejemplo)", value=True, key="usar_demo")
+
+if st.sidebar.button("🔄 Restaurar dataset demo"):
+    # Forzamos modo demo y recargamos la app
+    st.session_state["usar_demo"] = True
+    st.experimental_rerun()
+
+# Ruta del dataset demo (en la raíz del repo)
+DEMO_PATH = "Entrenamiento_Data_CSV.csv"
+
 # ==========================================================
 # 1. Feature engineering
 # ==========================================================
@@ -141,18 +152,30 @@ def train_and_evaluate_models(X, y, include_xgb=True):
 st.title("⚙️ Estimación de Vida Útil Remanente (RUL) en Filtros Industriales")
 st.write("""
 Esta aplicación te permite:
-1) Cargar tus datos  
+1) Cargar tus datos o usar un dataset de ejemplo  
 2) Comparar modelos de Machine Learning  
 3) Ver qué filtros están en **riesgo operativo** (semáforo)
 """)
 
-uploaded_file = st.file_uploader("📂 Subí un archivo CSV (Entrenamiento_Data_CSV.csv)", type=["csv"])
-if uploaded_file is None:
-    st.info("Esperando que subas un archivo para comenzar…")
-    st.stop()
+# 4.0 Carga de datos (modo demo o modo normal)
+if st.session_state.get("usar_demo", True):
+    st.success("Modo demo activado — usando dataset de ejemplo incluido en la app.")
+    try:
+        df = pd.read_csv(DEMO_PATH)
+    except FileNotFoundError:
+        st.error(f"No se encontró el archivo demo en la ruta: {DEMO_PATH}")
+        st.stop()
+else:
+    uploaded_file = st.file_uploader(
+        "📂 Subí un archivo CSV (por ejemplo, Entrenamiento_Data_CSV.csv)",
+        type=["csv"]
+    )
+    if uploaded_file is None:
+        st.info("Subí un archivo para comenzar o activá el modo demo en la barra lateral.")
+        st.stop()
+    df = pd.read_csv(uploaded_file)
 
 # 4.1 Cargar y mostrar dataset
-df = pd.read_csv(uploaded_file)
 st.success(f"Archivo cargado correctamente: {df.shape[0]} filas")
 
 st.subheader("👀 Vista rápida del dataset - A continuación, se muestran las primeras 5 filas de tu base de datos:")
@@ -237,7 +260,7 @@ else:
 max_rul_real = df["RUL"].max()
 df_current["RUL_pct"] = df_current["RUL_pred"] / max_rul_real * 100
 
-# Clasificación UX
+# Clasificación UX (umbral rojo configurable desde sidebar)
 def clasificar_estado(pct):
     if pct < umbral_rojo:
         return "Rojo"
