@@ -163,15 +163,15 @@ if uploaded_file:
         "Predicha": y_pred
         })
 
-        points = (
-            alt.Chart(scatter_df)
-            .mark_circle(size=40, opacity=0.25, color="#1f77b4")
-            .encode(
-                x=alt.X("Real:Q", title="Vida real del filtro (RUL)"),
-                y=alt.Y("Predicha:Q", title="Vida predicha por el modelo"),
-                tooltip=["Real", "Predicha"]
-            )
-        )
+    points = (
+        alt.Chart(scatter_df)
+        .mark_circle(size=40, opacity=0.25, color="#1f77b4")
+        .encode(
+            x=alt.X("Real:Q", title="Vida real del filtro (RUL)"),
+            y=alt.Y("Predicha:Q", title="Vida predicha por el modelo"),
+            tooltip=["Real", "Predicha"]
+       )
+    )
 
     diagonal = (
         alt.Chart(scatter_df)
@@ -188,7 +188,7 @@ if uploaded_file:
         title="Relación entre vida real y vida predicha"
     )
 
-        st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, use_container_width=True)
     st.subheader("🚦 Semáforo de riesgo por filtro")
 
     # Usamos el mejor modelo entrenado
