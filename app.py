@@ -31,7 +31,7 @@ umbral_amarillo = st.sidebar.slider("Umbral AMARILLO (%)", min_value=umbral_rojo
 st.sidebar.markdown("---")
 usar_demo = st.sidebar.checkbox("🚀 Usar modo demo (dataset de ejemplo)", value=True, key="usar_demo")
 
-if st.sidebar.button("🔄 Restaurar dataset demo"):
+if st.sidebar.button("🔄 Resetear demostración"):
     # Forzamos modo demo y recargamos la app
     st.session_state["usar_demo"] = True
     st.experimental_rerun()
@@ -153,8 +153,8 @@ st.title("⚙️ Estimación de Vida Útil Remanente (RUL) en Filtros Industrial
 st.write("""
 Esta aplicación te permite:
 1) Cargar tus datos o usar un dataset de ejemplo  
-2) Comparar modelos de Machine Learning  
-3) Ver qué filtros están en **riesgo operativo** (semáforo)
+2) Comparar modelos de Machine Learning - En modo normal te devolverá el mejor modelo, en modo avanzado agregará un cuadro comparativo entre modelos. 
+3) Ver qué filtros están en **riesgo operativo** (semáforo) - Estos serán los filtros que habrá que intervenir - Se puede crear un flujo automatizado para generación de órdenes de trabajo.
 """)
 
 # 4.0 Carga de datos (modo demo o modo normal)
@@ -209,8 +209,10 @@ col3.metric("Correlación", f"{corr_best:.3f}")
 # 4.5 Scatter
 st.subheader("🔍 Relación entre Vida Real y Predicha")
 
-scatter_df = pd.DataFrame({"Real": preds[best]["y_test"],
-                           "Predicha": preds[best]["y_pred"]})
+scatter_df = pd.DataFrame({
+    "Real": preds[best]["y_test"],
+    "Predicha": preds[best]["y_pred"]
+})
 
 points = (
     alt.Chart(scatter_df)
@@ -228,9 +230,11 @@ diagonal = (
     .encode(x="Real:Q", y="Real:Q")
 )
 
-st.altair_chart((points + diagonal).properties(height=350), use_container_width=True)
+chart = (points + diagonal).properties(height=350)
 
-# 4.6 Comparación (solo en modo experto)
+st.altair_chart(chart, width="stretch")
+
+# 4.6 Comparación (solo en modo avanzado)
 if modo_experto:
     st.subheader("📊 Comparación completa de modelos")
     st.dataframe(metrics_df.style.format({"MAE": "{:.2f}", "RMSE": "{:.2f}", "R2": "{:.3f}"}))
