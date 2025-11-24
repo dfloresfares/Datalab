@@ -153,8 +153,9 @@ st.title("⚙️ Estimación de Vida Útil Remanente (RUL) en Filtros Industrial
 st.write("""
 Esta aplicación te permite:
 1) Cargar tus datos o usar un dataset de ejemplo  
-2) Comparar modelos de Machine Learning - En modo normal te devolverá el mejor modelo, en modo avanzado agregará un cuadro comparativo entre modelos. 
+2) Comparar modelos de Machine Learning - En modo normal te devolverá el mejor modelo, en modo avanzado agregará un cuadro comparativo entre modelos.  
 3) Ver qué filtros están en **riesgo operativo** (semáforo) - Estos serán los filtros que habrá que intervenir - Se puede crear un flujo automatizado para generación de órdenes de trabajo.
+
 *Creado por Daniela Nazarena Flores Fares - Usando datos de "kaggle/prognosticshse/preventive-to-predicitve-maintenance"
 """)
 
